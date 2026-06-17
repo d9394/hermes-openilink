@@ -188,6 +188,8 @@ class OpeniLinkAdapter(BasePlatformAdapter):
             logger.error("[openilink] Server error message: %s", payload.get("error", ""))
 
     async def _handle_event(self, payload: dict) -> None:
+        logger.info("[openilink] ====== RECEIVED RAW PAYLOAD ======\n%s\n===================================", json.dumps(payload, ensure_ascii=False, indent=2))
+
         event_data = payload.get("event", {})
         event_type = event_data.get("type", "")
         data = event_data.get("data", {})
@@ -207,27 +209,64 @@ class OpeniLinkAdapter(BasePlatformAdapter):
         media_urls = []
         media_types = []
 
-        for item in items:
-            item_type = item.get("type", "")
-            if item_type == "text":
-                text_parts.append(item.get("text", ""))
-            elif item_type in ("image", "video", "file", "voice"):
-                media = item.get("media", {})
-                media_url = media.get("url", "")
-                if media_url:
-                    try:
-                        ext = ".jpg" if item_type == "image" else f".{item_type}"
-                        cached = await cache_image_from_url(media_url, ext=ext)
-                        media_urls.append(cached)
-                        media_types.append(f"{item_type}/{ext.lstrip('.')}")
-                    except Exception as exc:
-                        logger.warning("[openilink] Failed to cache media: %s", exc)
+        # ─── 【全新核心修复：优先捕获结构化 Command】 ───
+        cmd = data.get("command")
+        if cmd:
+            cmd_str = str(cmd).strip()
+            # 如果 OpeniLink 剥离了斜杠，自动帮它补上，以便 Hermes 的核心指令处理器能识别它
+            if not cmd_str.startswith("/"):
+                cmd_str = f"/{cmd_str}"
+            text_parts.append(cmd_str)
 
-        text = "\n".join(text_parts)
+        # 1. 尝试直接从 data 层获取常见文本字段
+        direct_content = data.get("content") or data.get("text") or data.get("msg")
+        if direct_content:
+            text_parts.append(str(direct_content))
+
+        # 2. 尝试从 event 根层或 data 层寻找任何可能的字符串内容（全方位穷举兜底）
+        for fallback_key in ("content", "text", "body", "message", "msg"):
+            if fallback_key in event_data and event_data[fallback_key]:
+                text_parts.append(str(event_data[fallback_key]))
+            if fallback_key in data and data[fallback_key]:
+                text_parts.append(str(data[fallback_key]))
+
+        # 3. 遍历标准的 items 数组
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item_type = item.get("type", "")
+                if item_type == "text":
+                    t = item.get("text") or item.get("content") or item.get("msg")
+                    if t:
+                        text_parts.append(str(t))
+                elif item_type in ("image", "video", "file", "voice"):
+                    media = item.get("media", {})
+                    media_url = media.get("url", "")
+                    if media_url:
+                        try:
+                            ext = ".jpg" if item_type == "image" else f".{item_type}"
+                            cached = await cache_image_from_url(media_url, ext=ext)
+                            media_urls.append(cached)
+                            media_types.append(f"{item_type}/{ext.lstrip('.')}")
+                        except Exception as exc:
+                            logger.warning("[openilink] Failed to cache media: %s", exc)
+
+        # 过滤并去重
+        unique_text_parts = []
+        for part in text_parts:
+            part_strip = part.strip()
+            if part_strip and part_strip not in unique_text_parts:
+                unique_text_parts.append(part_strip)
+
+        text = "\n".join(unique_text_parts)
         
+        logger.info("[openilink] Final parsed text to Hermes: '%s'", text)
+
+        # 动态处理消息类型映射
         if event_type == "message.image" or media_urls:
             msg_type = MessageType.PHOTO
-        elif event_type == "message.voice":
+        elif event_type in ("message.voice", "message.audio"):
             msg_type = MessageType.VOICE
         elif event_type == "message.video":
             msg_type = MessageType.VIDEO
