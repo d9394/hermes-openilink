@@ -1,4 +1,4 @@
-useage:   
+### useage:   
   1 Create a plugin directory in `~/.hermes/plugins/` , such as `~/.hermes/plugins/openilink/`   
   2 place plugin.yaml , adapter.py , __init__.py into `~/.hermes/plugins/openilink/`   
   3 modify .env file add lines:   
@@ -8,4 +8,7 @@ useage:
   4 hermes-gateway restart   
    
    
-！！！this is a test project ,not complete!!!   
+## openilink project :
+-- https://github.com/openilink/openilink-hub
+
+
