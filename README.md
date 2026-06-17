@@ -8,7 +8,7 @@
   4 hermes-gateway restart   
    
    
-## openilink project :
+## openilink-hub project :
 -- https://github.com/openilink/openilink-hub
 
 
