@@ -1,3 +1,5 @@
+### this is only a plugin, not any modify hermes code
+--
 ### useage:   
 -  1 Create a plugin directory in `~/.hermes/plugins/` , such as `~/.hermes/plugins/openilink/`   
 -  2 place plugin.yaml , adapter.py , __init__.py into `~/.hermes/plugins/openilink/`   
